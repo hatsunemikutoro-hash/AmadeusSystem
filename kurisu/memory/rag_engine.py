@@ -9,7 +9,8 @@ embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 vector_dbs = {
     "kurisu": Chroma(collection_name="amadeus_kurisu", embedding_function=embeddings, persist_directory=DB_DIR),
     "valkyrie": Chroma(collection_name="amadeus_valkyrie", embedding_function=embeddings, persist_directory=DB_DIR),
-    "skuld": Chroma(collection_name="amadeus_skuld", embedding_function=embeddings, persist_directory=DB_DIR)
+    "skuld": Chroma(collection_name="amadeus_skuld", embedding_function=embeddings, persist_directory=DB_DIR),
+    "gold": Chroma(collection_name="amadeus_kurisu", embedding_function=embeddings, persist_directory=DB_DIR)
 }
 
 async def consultar_data(pergunta, persona="kurisu"):

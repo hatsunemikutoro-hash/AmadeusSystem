@@ -21,6 +21,9 @@ def mudar_persona(nome_persona):
     elif nome_persona in ["valkyrie", "amadeus_valkyrie"]:
         character_prompt = "prompt_initial_valkyrie"
         current_persona = "amadeus_valkyrie"
+    elif nome_persona in ["gold", "amadeus_gold"]:
+        character_prompt = "prompt_initial_gold"
+        current_persona = "amadeus_gold"
     elif nome_persona in ["skuld", "amadeus_skuld"]:
         character_prompt = "prompt_initial_skuld"
         current_persona = "amadeus_skuld"

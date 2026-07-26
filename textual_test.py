@@ -11,6 +11,14 @@ from kurisu.brain_func.core import falar, memory
 from kurisu.memory.memory_manager import wipe, mudar_persona
 
 # =========================
+# CONFIG
+# =========================
+
+MAX_MESSAGES = 150  # limite de widgets mantidos no histórico (perf)
+STREAM_FLUSH_INTERVAL = 0.05  # segundos entre atualizações de tela durante o streaming
+SCROLL_TOLERANCE = 3  # linhas de folga para considerar "no final" do scroll
+
+# =========================
 # ASCII BANNERS
 # =========================
 
@@ -24,7 +32,7 @@ KURISU_BANNER = r"""[bold #FFD700]
            -*@*@@%*=*#+=--+@@@@#-+#==*%@@@@*+@@@@@@%-  
          :=*%@@%+*@@+::::::---=-::::+*=#@@@=%@@@@@@+:  
         -=@@@#=+@@@%+:::::::::::::::-#@%=++@@@@@@@#:   
-       :=%#*%=%--*-::::::::::::::::::+@@=#@@@@@=#%:    
+       :=%#*%=%--*-::::::::::::::::::+@@=#@@@@@@@=#%:    
       :-%@@@+#-::::::::=*%@@@@%*=:::::-+@@@@@*+@+-:    
       :%#%#+*=:::::::=@@@@@@@@@@@%=::=%@@@@#+%@@#-     
      :=@@@%-@#=:::::+@@@@@@@@@@@@@#=%@@@@#-#+@@@%=     
@@ -72,7 +80,7 @@ VALKYRIE_BANNER = r"""[bold #00A8FF]
 [/]"""
 
 SKULD_BANNER = r"""[bold #00FF66]
-                                                  
+
                 :%+.       +%-                
                :@@@@%+::=%@@@@:               
                #@@@@@@@@@@@@@@%.              
@@ -96,7 +104,7 @@ SKULD_BANNER = r"""[bold #00FF66]
          +%@@@@@@@@*#@@@@#*@@@@@@@@@+         
            .+%@@@@@@@@@@@@@@@@@@%+.           
                .=+*%%@@@@%%*+=.               
-                                              
+
 [/]"""
 
 
@@ -109,6 +117,8 @@ def get_prefix(persona: str) -> str:
         return "[bold #00A8FF]Amadeus // Valkyrie: [/bold #00A8FF] "
     elif persona == "skuld":
         return "[bold #00FF66]Amadeus // Skuld: [/bold #00FF66] "
+    elif persona == "gold":
+        return "[bold #ffc300]Amadeus // GOLD: [/bold #ffc300] "
     return "[bold #FF003C]Amadeus // Kurisu: [/bold #FF003C]"
 
 
@@ -135,8 +145,9 @@ class AmadeusKurisu(App):
         overflow-y: auto;
     }
 
-    #chat_container.theme-valkyrie { border: ascii #00A8FF; }
-    #chat_container.theme-skuld { border: ascii #00FF66; }
+    #chat_container.theme-valkyrie { border: solid #00A8FF; }
+    #chat_container.theme-skuld { border: hkey #00FF66; }
+    #chat_container.theme-gold { border: round #ffe900; }
 
     .msg_user { 
         margin-top: 1; 
@@ -176,18 +187,20 @@ class AmadeusKurisu(App):
 
     Input.theme-valkyrie { border: round #00A8FF; }
     Input.theme-skuld { border: round #00FF66; }
+    Input.theme-gold { border: round #ffe900; }
+
+    Input:disabled {
+        opacity: 0.5;
+    }
     """
 
-    # =========================
-    # INIT STATE
-    # =========================
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ultima_resposta_amadeus = ""
+        self.current_persona = "kurisu"
+        self._processing = False
 
-    ultima_resposta_amadeus = ""
-    current_persona = "kurisu"
-
-    # =========================
     # UI SETUP
-    # =========================
 
     def compose(self):
         yield Header()
@@ -202,7 +215,6 @@ class AmadeusKurisu(App):
     async def on_mount(self):
         container = self.query_one("#chat_container", VerticalScroll)
 
-        # Monta a arte inicial e a mensagem de boas-vindas
         await container.mount(Static(KURISU_BANNER, markup=True, classes="ascii_art"))
         await container.mount(
             Static(
@@ -211,6 +223,30 @@ class AmadeusKurisu(App):
                 classes="msg_info"
             )
         )
+        self.query_one("#terminal_input", Input).focus()
+
+    # helpers
+    def _is_scrolled_to_bottom(self, container: VerticalScroll) -> bool:
+        """Só forçamos o auto-scroll se o usuário já estiver perto do final.
+        Evita 'puxar' a tela de quem subiu pra reler algo."""
+        max_offset = container.scrollable_content_region.height
+        return (container.scroll_y + container.size.height) >= (
+                container.virtual_size.height - SCROLL_TOLERANCE
+        )
+
+    async def _mount_message(self, widget: Static, container: VerticalScroll, force_scroll: bool = True):
+        was_at_bottom = self._is_scrolled_to_bottom(container) if not force_scroll else True
+        await container.mount(widget)
+
+        # Poda o histórico antigo para não acumular widgets indefinidamente
+        children = container.children
+        if len(children) > MAX_MESSAGES:
+            overflow = len(children) - MAX_MESSAGES
+            for child in children[:overflow]:
+                await child.remove()
+
+        if force_scroll or was_at_bottom:
+            container.scroll_end(animate=False)
 
     # =========================
     # SPINNER
@@ -228,9 +264,6 @@ class AmadeusKurisu(App):
             i += 1
             await asyncio.sleep(0.1)
 
-    # =========================
-    # CLIPBOARD
-    # =========================
 
     def action_copy_last(self):
         if self.ultima_resposta_amadeus:
@@ -256,10 +289,6 @@ class AmadeusKurisu(App):
         except Exception as e:
             self.notify(str(e), severity="error")
 
-    # =========================
-    # COMMANDS
-    # =========================
-
     async def processar_comando(self, comando: str):
         container = self.query_one("#chat_container", VerticalScroll)
         input_box = self.query_one("#terminal_input", Input)
@@ -269,10 +298,10 @@ class AmadeusKurisu(App):
         if cmd == "/wipe":
             wipe()
             memory.clear()
-            await container.mount(
-                Static("[dim]--- Temporal memory erased ---[/dim]", classes="msg_info")
+            await self._mount_message(
+                Static("[dim]--- Temporal memory erased ---[/dim]", classes="msg_info"),
+                container,
             )
-            container.scroll_end(animate=True)
             return
 
         mapa = {
@@ -294,6 +323,12 @@ class AmadeusKurisu(App):
                 "theme-skuld",
                 SKULD_BANNER
             ),
+            "/g": (
+                "gold",
+                "[bold #ffc300]YOU'RE INDESTRUCTABLE.[/bold #ffc300]",
+                "theme-gold",
+                KURISU_BANNER
+            )
         }
 
         if cmd not in mapa:
@@ -301,7 +336,6 @@ class AmadeusKurisu(App):
 
         persona, msg, theme, banner = mapa[cmd]
 
-        # Evitar re-montar banner se a persona atual já for a solicitada
         if self.current_persona == persona:
             return
 
@@ -315,49 +349,43 @@ class AmadeusKurisu(App):
             container.add_class(theme)
             input_box.add_class(theme)
 
-        # Renderiza a transição visual no chat feed
-        await container.mount(Static(banner, markup=True, classes="ascii_art"))
-        await container.mount(Static(msg, classes="msg_info"))
-
-        # Garante que o scroll acompanhe a nova arte e mensagem
-        container.scroll_end(animate=True)
-
-    # =========================
-    # MAIN CHAT FLOW
-    # =========================
+        await self._mount_message(Static(banner, markup=True, classes="ascii_art"), container)
+        await self._mount_message(Static(msg, classes="msg_info"), container)
 
     async def on_input_submitted(self, event: Input.Submitted):
         user_text = event.value.strip()
-        if not user_text:
+        if not user_text or self._processing:
             return
 
         container = self.query_one("#chat_container", VerticalScroll)
         status = self.query_one("#status_bar", Static)
+        input_box = self.query_one("#terminal_input", Input)
 
         event.input.value = ""
 
-        # Processar comandos internos
         if user_text.startswith("/"):
             await self.processar_comando(user_text)
             return
 
-        # Renderizar mensagem do usuário
-        await container.mount(
-            Static(f"[bold #00ff94]user@makise-lab:~[/bold #00ff94]$ {user_text}", classes="msg_user")
+        await self._mount_message(
+            Static(f"[bold #00ff94]user@makise-lab:~[/bold #00ff94]$ {user_text}", classes="msg_user"),
+            container,
         )
 
         prefix = get_prefix(self.current_persona)
 
         amadeus_msg = Static(prefix, classes="msg_amadeus")
-        await container.mount(amadeus_msg)
+        await self._mount_message(amadeus_msg, container)
 
-        container.scroll_end(animate=False)
+        self._processing = True
+        input_box.disabled = True
 
         spinner_task = asyncio.create_task(self.run_spinner(status))
 
         start = time.perf_counter()
         current = prefix
         raw = ""
+        last_flush = 0.0
 
         try:
             async for chunk in falar(user_text):
@@ -369,17 +397,26 @@ class AmadeusKurisu(App):
                 current += chunk
                 raw += chunk
 
-                amadeus_msg.update(current)
+                now = time.perf_counter()
+                if now - last_flush >= STREAM_FLUSH_INTERVAL:
+                    amadeus_msg.update(current)
+                    if self._is_scrolled_to_bottom(container):
+                        container.scroll_end(animate=False)
+                    last_flush = now
+
+            # flush final para garantir que o último trecho apareça
+            amadeus_msg.update(current)
+            if self._is_scrolled_to_bottom(container):
                 container.scroll_end(animate=False)
 
             self.ultima_resposta_amadeus = raw
 
             latency = time.perf_counter() - start
 
-            await container.mount(
-                Static(f"[dim]latency: {latency:.3f}s[/dim]", classes="msg_info")
+            await self._mount_message(
+                Static(f"[dim]latency: {latency:.3f}s[/dim]", classes="msg_info"),
+                container,
             )
-            container.scroll_end(animate=True)
 
         except Exception as e:
             if not spinner_task.done():
@@ -387,15 +424,16 @@ class AmadeusKurisu(App):
 
             status.update("[bold red]CRITICAL ERROR[/bold red]")
 
-            await container.mount(
-                Static(f"[bold red]Exception Triggered: {e}[/bold red]", classes="msg_info")
+            await self._mount_message(
+                Static(f"[bold red]Exception Triggered: {e}[/bold red]", classes="msg_info"),
+                container,
             )
-            container.scroll_end(animate=True)
 
+        finally:
+            self._processing = False
+            input_box.disabled = False
+            input_box.focus()
 
-# =========================
-# EXECUTE PROTOCOL
-# =========================
 
 if __name__ == "__main__":
     AmadeusKurisu().run()

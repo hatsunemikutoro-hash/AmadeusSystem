@@ -1,9 +1,10 @@
 from ollama import AsyncClient
 from pynput import keyboard
 
-model = "qwen2.5:7b"
+model = "qwen3.5:9b"
 from kurisu.brain_func.state import state
 import re
+import trafilatura
 from ddgs import DDGS
 
 ferramentas = [
@@ -57,14 +58,20 @@ ferramentas = [
 
 def search(termo: str) -> str:
     try:
-        with DDGS() as ddgs:
-            resultados = [r for r in ddgs.text(termo, max_results=3)]
 
-            contexto = ""
-            for i, r in enumerate(resultados, 1):
-                contexto += f"Resultado {i}: {r['title']}\nResumo: {r['body']}\n\n"
 
-            return contexto
+        results = DDGS().text(termo, max_results=1)
+
+        url = results[0]['href']
+
+        conteudo = trafilatura.fetch_url(url)
+        limpin = trafilatura.extract(conteudo,
+                                     output_format='markdown',
+                                     include_tables=True,
+                                     include_comments=False,
+                                     favor_recall=True)
+
+        return limpin
     except Exception as e:
         return f"erro ao acessar o steins gate. ERRO {e}"
 
