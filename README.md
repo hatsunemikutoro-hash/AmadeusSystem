@@ -87,4 +87,6 @@ python textual_test.py
 
 O **AMADEUS KURISU** foi desenvolvido com foco em uma experiência de IA local, oferecendo maior controle sobre dados, modelos e ambiente de execução.
 
+E AINDA ESTÁ EM DESENVOLVIMENTO ENTÃO BUGS E FALHAS POR FAVOR REPORTEM, ACEITO CONTRIBUIÇÃO.
+
 **El Psy Kongroo.**
