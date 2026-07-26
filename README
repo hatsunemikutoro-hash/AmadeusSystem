@@ -1,0 +1,20 @@
+# 🧪 AMADEUS KURISU
+
+Projeto focado em rodar IA localmente com total privacidade. O objetivo aqui é ter um ambiente funcional e controlado direto no seu computador.
+
+---
+
+## 🛠 O que tem dentro
+
+*   **Interface no Terminal:** UI feita com Textual para rodar direto no console.
+*   **RAG com ChromaDB:** Busca inteligente em documentos. Já vem com alguns livros instalados para você testar.
+*   **Deep Think:** Ferramentas de raciocínio (em fase de manutenção, mas funcionais).
+*   **Search Tools:** Ferramentas de busca web (precisa de conexão com internet).
+
+---
+
+## 🚀 Como usar
+
+1. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
