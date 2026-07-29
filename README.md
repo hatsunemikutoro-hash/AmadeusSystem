@@ -78,7 +78,7 @@ kurisu/brain_func/core.py
 Execute:
 
 ```bash
-python textual_test.py
+python gui_module.py
 ```
 
 ---

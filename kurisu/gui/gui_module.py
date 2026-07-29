@@ -1,3 +1,4 @@
+import sys
 import time
 import asyncio
 import pyperclip
@@ -5,121 +6,29 @@ import pyperclip
 from textual.app import App
 from textual.widgets import Header, Footer, Static, Input
 from textual.containers import VerticalScroll
+from tkinter import filedialog as pd
 
-# Certifique-se de que seus imports internos continuam aqui
+# Intern Modules
+
+# Adiciona a pasta S:\Vscode\MakiseAI ao path
+project_root = r'S:\Vscode\MakiseAI'
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Agora importa com caminho absoluto
+from kurisu.gui.banners import KURISU_BANNER, SKULD_BANNER, VALKYRIE_BANNER
+from kurisu.gui.gui_helpers import get_prefix
+from kurisu.gui.gui_variables import *
 from kurisu.brain_func.core import falar, memory
 from kurisu.memory.memory_manager import wipe, mudar_persona
+import kurisu.utils as utils
 
-# =========================
-# CONFIG
-# =========================
+# configzona
 
 MAX_MESSAGES = 150  # limite de widgets mantidos no histórico (perf)
 STREAM_FLUSH_INTERVAL = 0.05  # segundos entre atualizações de tela durante o streaming
 SCROLL_TOLERANCE = 3  # linhas de folga para considerar "no final" do scroll
 
-# =========================
-# ASCII BANNERS
-# =========================
-
-KURISU_BANNER = r"""[bold #FFD700]
-                                                     :
-                                                   :::
-                      -:::----::::               :-*%- 
-                 -:-+*%%%@%%%@@%*%#+:::        --*@@#- 
-              :-=*@@##@@%@%%#@%*+@@%+%#--:   --+@@@@*- 
-            :-*%*#*%@*+++++++++++#%#@@###*-:=*@@@@@@+: 
-           -*@*@@%*=*#+=--+@@@@#-+#==*%@@@@*+@@@@@@%-  
-         :=*%@@%+*@@+::::::---=-::::+*=#@@@=%@@@@@@+:  
-        -=@@@#=+@@@%+:::::::::::::::-#@%=++@@@@@@@#:   
-       :=%#*%=%--*-::::::::::::::::::+@@=#@@@@@@@=#%:    
-      :-%@@@+#-::::::::=*%@@@@%*=:::::-+@@@@@*+@+-:    
-      :%#%#+*=:::::::=@@@@@@@@@@@%=::=%@@@@#+%@@#-     
-     :=@@@%-@#=:::::+@@@@@@@@@@@@@#=%@@@@#-#+@@@%=     
-     :*@@@**@@#::::=%@@@@@@@@@@@%+#@@@@#-:-#@@+*##%+:    
-     :*@@@+#@@*::::=@@@@@@@@@@#=%@@@@#-:-#@@+*##%+:     
-     :*@@@**+::::::-%@@@@@@@*=%@@@@*::::-%@@=#%%#=      
-     :=@@@%-#-::::::=@@@@%+*@@@@%++-:::::=*#+@@@%=       
-      :#@@@**+:::::::-#*=@@@@@*=%#-:::::::#-#+%**-        
-      :-@@@@+*+*#-:::=*@@@@#==*=::::::::-*=#%@@@=:       
-       :=@@@@+#@@*-*@@@@#=-:::::::::-##+++*##%@=:        
-       :=+@@***-+@@@@#-:::::::::::-%@@@#=#@@@@-:         
-     :-#++=*%%@@++++=:::=*++=::::::*@*+##*#*%=:          
-    -=%#-*%*+@%#@@#==*%#@@@@@=-+%#+=*%%@@*%=-            
-    -#@%#+-:::+@@#@#@%*+=-=====+#*#@@%##%+-              
-    ::-:       :=+#@@#%@@+#%@%#%@#@#@%+-:                
-                  :--+#@@@#@@%*@@#=--:                   
-                       ::::::::::                     [/]"""
-
-VALKYRIE_BANNER = r"""[bold #00A8FF]
-                      -  -@@:  =                  
-            .#-  @@@:@@@%:@@@  =#             
-           :@@@@%@@@@@@@@@@@@#@@@@            
-       #@@++@@@@@@@@@@@@@@@@@@@@@@-+@@*       
-     .  %@@@@@@@@@@@#*==+*@@@@@@@@@@@@        
-    =@@@@@@@@@@#              #@@@@@@@@@@#    
-     #@@@@@@@.       @@@%        @@@@@@@#     
-  @@@@@@@@@-  @%  @@@@@@@@@@ .@@. .@@@@@@@@@  
-  .@@@@@@@   @@@@@@@@@@@@@@@@@@@@.  %@@@@@@.  
-   .@@@@@.    %@@@@@@%==#@@@@@@@     @@@@@+:. 
-#@@@@@@@+   -@@@@@@        #@@@@@=   :@@@@@@@#
- .@@@@@@. ##%@@@@@   .##-   *@@@@%##  @@@@@@. 
-.@@@@@@@. @@@@@@@*   @@@@-  -@@@@@@@  @@@@@@@ 
-@@@@@@@@. %%%@@@@@    %%:   @@@@@@%%  @@@@@@@%
-   :@@@@+   .@@@@@@.       #@@@@@:   +@@@@:   
-  +@@@@@@.    %@@@@@@@#+%@@@@@@@    .@@@@@@+  
- :@@@@@@@@   @@@@@@@@@@@@@@@@@@@@.  @@@@@@@@. 
-     +@@@@@:  %@: @@@@@@@@@@.:@@  -@@@@@#     
-    *@@@@@@@@       .@@@@        @@@@@@@@@    
-    .--:*@@@@@@+              -@@@@@@*.-#+    
-       =@@@@@@@@@@@+.     =%@@@@@@@@@@=       
-       =@%::@@@@@@@@@@@@@@@@@@@@@@:-@@+       
-           :@@@@@@@@@@@@@@@@@@@@@@.           
-             :.  @@@-@@@@:@@@  .:             
-                 :=  +@@=  #:                 
-[/]"""
-
-SKULD_BANNER = r"""[bold #00FF66]
-
-                :%+.       +%-                
-               :@@@@%+::=%@@@@:               
-               #@@@@@@@@@@@@@@%.              
-              -@@@@@@@@@@@@@@@@+              
-              @@@@@@@@@@@@@@@@@@              
-              -#@@@@@@@@@@@@@@#-              
-      :-=#@# :.  :+%@@@@@@%+:  .- *@#=-:      
-    .%@@@@@- +@@*:          :*%@+ .@@@@@%.    
-      *@@@@@-  .=#@@@#++*%@@#+.  :%@@@@*      
-        -%@@@@#-    :-==-:    -*@@@@%=        
-           =+@@@@@%=------=%@@@@@*=           
-             -::==+#%@@@@%#+==-:-             
-           : *@@@%#=-------*%@@@* :           
-         +@@+ @@@@@@@@@@@@@@@@@@.+@@*         
-       .+@@@@-:@@@@@@@@@@@@@@@@--@@@@+.       
-          -%@@=.#@@@@@@@@@@@@#:=@@@-          
-       .:-*%@@@%:=@@@@@@@@@@+:%@@@@*-::.      
-    *@@@@@@@@@@@#-*@@@@@@@@#-#@@@@@@@@@@@*    
-     -%@@@@@@@@@@+=@@@@@@@@++@@@@@@@@@@@-     
-       +@@@@@@@@@@+*@@@@@@*+@@@@@@@@@@+       
-         +%@@@@@@@@*#@@@@#*@@@@@@@@@+         
-           .+%@@@@@@@@@@@@@@@@@@%+.           
-               .=+*%%@@@@%%*+=.               
-
-[/]"""
-
-
-# =========================
-# HELPERS
-# =========================
-
-def get_prefix(persona: str) -> str:
-    if persona == "valkyrie":
-        return "[bold #00A8FF]Amadeus // Valkyrie: [/bold #00A8FF] "
-    elif persona == "skuld":
-        return "[bold #00FF66]Amadeus // Skuld: [/bold #00FF66] "
-    elif persona == "gold":
-        return "[bold #ffc300]Amadeus // GOLD: [/bold #ffc300] "
-    return "[bold #FF003C]Amadeus // Kurisu: [/bold #FF003C]"
 
 
 # =========================
@@ -194,12 +103,18 @@ class AmadeusKurisu(App):
     }
     """
 
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ultima_resposta_amadeus = ""
         self.current_persona = "kurisu"
         self._processing = False
-
+        # TODO make a write tool
+        # TODO make a change model command like that /model (model)
+        self.commands_map = {
+            "/wipe": self.wipe_command,
+            "/local": self.choose_pasta
+        }
     # UI SETUP
 
     def compose(self):
@@ -289,47 +204,32 @@ class AmadeusKurisu(App):
         except Exception as e:
             self.notify(str(e), severity="error")
 
+    async def choose_pasta(self, container):
+        file = pd.askdirectory(title="selecione a pasta do seu projeto")
+
+        utils.PROJETO_RAIZ =  file
+        await self._mount_message(
+            Static(f"[dim]--- Now we are on {file} ---[/dim]", classes="msg_info"),
+            container,
+        )
+
+    async def wipe_command(self, container):
+        wipe()
+        memory.clear()
+        await self._mount_message(
+            Static("[dim]--- Temporal memory erased ---[/dim]", classes="msg_info"),
+            container,
+        )
+
     async def processar_comando(self, comando: str):
         container = self.query_one("#chat_container", VerticalScroll)
         input_box = self.query_one("#terminal_input", Input)
 
         cmd = comando.split()[0].lower()
 
-        if cmd == "/wipe":
-            wipe()
-            memory.clear()
-            await self._mount_message(
-                Static("[dim]--- Temporal memory erased ---[/dim]", classes="msg_info"),
-                container,
-            )
+        if cmd in self.commands_map:
+            await self.commands_map[cmd](container)
             return
-
-        mapa = {
-            "/k": (
-                "kurisu",
-                "[bold #FF003C]✦ Kurisu took over the conversation[/bold #FF003C]",
-                "theme-kurisu",
-                KURISU_BANNER
-            ),
-            "/v": (
-                "valkyrie",
-                "[bold #00A8FF]Ψ Valkyrie took on the engineering mission[/bold #00A8FF]",
-                "theme-valkyrie",
-                VALKYRIE_BANNER
-            ),
-            "/s": (
-                "skuld",
-                "[bold #00FF66]Φ Skuld took on the survival mission[/bold #00FF66]",
-                "theme-skuld",
-                SKULD_BANNER
-            ),
-            "/g": (
-                "gold",
-                "[bold #ffc300]YOU'RE INDESTRUCTABLE.[/bold #ffc300]",
-                "theme-gold",
-                KURISU_BANNER
-            )
-        }
 
         if cmd not in mapa:
             return

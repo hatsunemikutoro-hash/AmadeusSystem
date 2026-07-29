@@ -1,3 +1,5 @@
+import os.path
+
 from ollama import AsyncClient
 from pynput import keyboard
 
@@ -6,6 +8,8 @@ from kurisu.brain_func.state import state
 import re
 import trafilatura
 from ddgs import DDGS
+
+PROJETO_RAIZ = "S:\\Vscode\\MakiseAI"
 
 ferramentas = [
     {
@@ -51,6 +55,49 @@ ferramentas = [
                     }
                 },
                 "required": ["prompt"]
+            }
+        }
+    },
+{
+        "type": "function",
+        "function": {
+            "name": "listar_diretorio",
+            "description": "Lista os arquivos e pastas de um diretório. Use para navegar pelo projeto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "caminho": {"type": "string", "description": "Caminho para listar. Use '.' para atual, '..' para subir."}
+                },
+                "required": ["caminho"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ler_arquivo",
+            "description": "Lê o conteúdo de um arquivo de texto (código, logs, etc). Útil para debugar ou entender o código.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "caminho": {"type": "string", "description": "Caminho do arquivo para ler"}
+                },
+                "required": ["caminho"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "escrever_arquivo",
+            "description": "CRIA ou SOBRESCREVE um arquivo com novo conteúdo. Use para corrigir bugs, refatorar ou criar novos arquivos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "caminho": {"type": "string", "description": "Caminho do arquivo para escrever"},
+                    "conteudo": {"type": "string", "description": "Conteúdo NOVO para colocar no arquivo"}
+                },
+                "required": ["caminho", "conteudo"]
             }
         }
     }
@@ -105,12 +152,70 @@ Problema:
 
     return response.message.content
 
-def on_press(key):
-    if state.mode == "v":
+# spcprrp
+
+def _sanitizar_caminho(caminho):
+    if not caminho:
+        return PROJETO_RAIZ
+
+    if caminho.startswith("."):
+        caminho = os.path.join(PROJETO_RAIZ, caminho)
+
+    caminho_abs = os.path.abspath(caminho)
+
+    if not caminho_abs.startswith(os.path.abspath(PROJETO_RAIZ)):
+        return PROJETO_RAIZ
+
+    return caminho_abs
+
+def listar_diretorio(caminho="."):
+    caminho_real = _sanitizar_caminho(caminho)
+
+    if not os.path.exists(caminho_real):
+        return f"Erro: Caminho {caminho_real} não encontrado."
+
+    try:
+        itens = os.listdir(caminho_real)
+        resultado = f"Conteudo de {caminho_real}:\n"
+        for item in sorted(itens):
+            caminho_completo = os.path.join(caminho_real, item)
+            if os.path.isdir(caminho_completo):
+                resultado += f"  📂 {item}/\n"
+            else:
+                tamanho = os.path.getsize(caminho_completo)
+                resultado += f"  📄 {item} ({tamanho} bytes)\n"
+        return resultado
+    except Exception as e:
+        return f"Erro ao listar: {e}"
+
+def ler_arquivo(caminho):
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    if not os.path.isabs(caminho):
+        caminho = os.path.join(raiz, caminho)
+
+    caminho = os.path.normpath(caminho)
+    if not caminho.startswith(raiz):
+        return f"SISTEMA AMADEUS AVISO: {caminho} ESTÁ FORA DO PROJETO"
+
+    if not os.path.exists(caminho):
+        return f"SISTEMA AMADEUS AVISO: {caminho} NAO EXISTE"
+
+    try:
+        with open(caminho, 'r', encoding='utf-8') as f:
+            conteudo = f.read()
+    except UnicodeDecodeError:
         try:
-            if key == keyboard.Key.space:
-                listening = not state.listening
-                print(f"Kurisu {'Activate' if listening else 'Sleeping'}")
+            with open(caminho, 'r', encoding='latin-1') as f:
+                conteudo = f.read()
         except Exception as e:
-            print(f"Erro tecla: {e}")
+            return f"❌ Não foi possível decodificar o arquivo: {e}"
+
+    limite = 10000
+
+    if len(conteudo) > limite:
+        conteudo = conteudo[:limite] + "\n\n... [ARQUIVO MUITO GRANDE - CORTADO] ..."
+
+    return f"📄 Conteúdo de '{caminho}':\n```\n{conteudo}\n```"
+
 

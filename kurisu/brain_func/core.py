@@ -8,14 +8,14 @@ from dotenv import load_dotenv
 
 from kurisu.memory import memory_manager
 from kurisu.memory import rag_engine
-from kurisu.utils import ferramentas, search, think
+from kurisu.utils import ferramentas, search, think, listar_diretorio, ler_arquivo
 
 load_dotenv()
 
 memory = memory_manager.load_memory()
 model = "qwen3.5:9b"
 MEMORY_MAX = 8
-MAX_TOOL_ITERATIONS = 3  # evita loop infinito se o modelo insistir em chamar tools
+MAX_TOOL_ITERATIONS = 5  # evita loop infinito se o modelo insistir em chamar tools
 
 _memory_lock = asyncio.Lock()
 
@@ -106,6 +106,18 @@ async def _executar_tool(tool):
         aviso = "\n[dim #ffaa00]* Analisando profundamente o problema... *[/dim #ffaa00]\n"
         resultado = think(args["prompt"])
 
+
+    elif nome == "listar_diretorio":
+        caminho = args["caminho"]
+        aviso = f"\n[dim #ffaa00]* Listando diretório '{caminho}'... *[/dim #ffaa00]\n"
+        resultado = listar_diretorio(caminho)
+
+
+    elif nome == "ler_arquivo":
+        caminho = args["caminho"]
+        aviso = f"\n[dim #00aaff]* Lendo arquivo '{caminho}'... *[/dim #00aaff]\n"
+        resultado = ler_arquivo(caminho)
+
     else:
         return nome, None, None
 
@@ -170,11 +182,36 @@ async def falar(content: str):
                 return
 
             if not tool_calls or iteracao >= MAX_TOOL_ITERATIONS:
-                memory.append({
-                    "role": "assistant",
-                    "content": full_response,
-                })
-                break
+                if not tool_calls or iteracao >= MAX_TOOL_ITERATIONS:
+                    # Se veio vazio, força a síntese com UM ÚNICO CHAMADA EXTRA
+                    if not full_response.strip():
+                        # Pega os resultados das tools guardadas na memória
+                        tool_results = [f"{m.get('name')}: {m.get('content')}" for m in memory if
+                                        m.get('role') == 'tool']
+
+                        if tool_results:
+                            # Roda o modelo UMA vez só pra gerar o resumo (sem tools, sem loop)
+                            final_stream = await AsyncClient().chat(
+                                model=model,
+                                messages=[
+                                    {"role": "system",
+                                     "content": f"{system_content}\n\nGere uma resposta final clara para o usuário com base APENAS nos resultados das ferramentas listados abaixo. Se não tiver dados, diga que não encontrou."},
+                                    *memory,
+                                    {"role": "user", "content": f"Resultados obtidos:\n{chr(10).join(tool_results)}"}
+                                ],
+                                stream=True
+                            )
+                            # Renderiza essa resposta final pro usuário
+                            async for chunk in final_stream:
+                                if chunk.message.content:
+                                    yield chunk.message.content
+                                    full_response += chunk.message.content
+                        else:
+                            full_response = "Não consegui executar nenhuma ferramenta para responder."
+
+                    # Agora sim guarda e sai
+                    memory.append({"role": "assistant", "content": full_response})
+                    break
 
             # Salva a resposta parcial + as tool calls pedidas
             memory.append({
