@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from kurisu.memory import memory_manager
 from kurisu.memory import rag_engine
-from kurisu.utils import ferramentas, search, think, listar_diretorio, ler_arquivo
+from kurisu.utils import ferramentas, search, think, listar_diretorio, ler_arquivo, escrever_arquivo
 
 load_dotenv()
 
@@ -26,6 +26,25 @@ def _trim_memory():
     while memory and memory[0].get("role") == "tool":
         memory.pop(0)
 
+async def can_use_think(model: str) -> bool:
+    try:
+        # Tenta uma chamada mínima
+        client = AsyncClient()
+        await asyncio.wait_for(
+            client.chat(
+                model=model,
+                messages=[{"role": "user", "content": "."}],
+                think=True,
+                stream=False,
+                options={"num_predict": 1}
+            ),
+            timeout=2.0
+        )
+        return True
+    except TypeError:
+        return False
+    except:
+        return False
 
 async def extract_fact(content):
     prompt = """Analise essa conversa e extraia fatos importantes e permanentes SOMENTE do usuario, e force a terceira pessoa (O usuario gosta, etc), ignore a assistente.
@@ -57,16 +76,21 @@ async def extract_fact(content):
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(">>> erro ao processar fatos, llm retornou:", text, "| erro:", e)
 
-
+# TODO: Fazer um sistema de reconhecer se pode ou nao usar o parametro think, atualmente da erro
 async def stream_response(messages):
-    stream = await AsyncClient().chat(
-        model=model,
-        messages=messages,
-        stream=True,
-        tools=ferramentas,
-        options={"temperature": 0.95},
-        think=True
-    )
+
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "tools": ferramentas,
+        "options": {"temperature": 0.95, "num_predict": -1}
+    }
+
+    if await can_use_think(model):
+        kwargs["think"] = True
+
+    stream = await AsyncClient().chat(**kwargs)
 
     texto = ""
     tool_calls = []
@@ -117,6 +141,12 @@ async def _executar_tool(tool):
         caminho = args["caminho"]
         aviso = f"\n[dim #00aaff]* Lendo arquivo '{caminho}'... *[/dim #00aaff]\n"
         resultado = ler_arquivo(caminho)
+
+    elif nome == "escrever_arquivo":
+        caminho = args["caminho"]
+        conteudo = args["conteudo"]
+        aviso = f"\n[dim #00aaff]* escrevendo arquivo '{caminho}'... *[/dim #00aaff]\n"
+        resultado = escrever_arquivo(caminho, conteudo)
 
     else:
         return nome, None, None

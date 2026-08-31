@@ -9,6 +9,9 @@ import re
 import trafilatura
 from ddgs import DDGS
 
+LOCK_SEARCH = False
+FILE_WRITE = False
+
 PROJETO_RAIZ = "S:\\Vscode\\MakiseAI"
 
 ferramentas = [
@@ -90,7 +93,7 @@ ferramentas = [
         "type": "function",
         "function": {
             "name": "escrever_arquivo",
-            "description": "CRIA ou SOBRESCREVE um arquivo com novo conteúdo. Use para corrigir bugs, refatorar ou criar novos arquivos.",
+            "description": "CRIA ou SOBRESCREVE um arquivo com novo conteúdo com seu formato desejado. Use para corrigir bugs, refatorar ou criar novos arquivos.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -104,23 +107,26 @@ ferramentas = [
 ]
 
 def search(termo: str) -> str:
-    try:
+    if not LOCK_SEARCH:
+        try:
 
 
-        results = DDGS().text(termo, max_results=1)
+            results = DDGS().text(termo, max_results=1)
 
-        url = results[0]['href']
+            url = results[0]['href']
 
-        conteudo = trafilatura.fetch_url(url)
-        limpin = trafilatura.extract(conteudo,
-                                     output_format='markdown',
-                                     include_tables=True,
-                                     include_comments=False,
-                                     favor_recall=True)
+            conteudo = trafilatura.fetch_url(url)
+            limpin = trafilatura.extract(conteudo,
+                                         output_format='markdown',
+                                         include_tables=True,
+                                         include_comments=False,
+                                         favor_recall=True)
 
-        return limpin
-    except Exception as e:
-        return f"erro ao acessar o steins gate. ERRO {e}"
+            return limpin
+        except Exception as e:
+            return f"erro ao acessar a api de search. ERRO {e}"
+    else:
+        return f"O LOCK_SEARCH foi ativado pelo usuario, o conteudo dessa conversa provavelmente é secreto."
 
 async def think(objetivo: str):
     prompt = f"""
@@ -155,6 +161,7 @@ Problema:
 # spcprrp
 
 def _sanitizar_caminho(caminho):
+    global PROJETO_RAIZ
     if not caminho:
         return PROJETO_RAIZ
 
@@ -189,8 +196,8 @@ def listar_diretorio(caminho="."):
         return f"Erro ao listar: {e}"
 
 def ler_arquivo(caminho):
-    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
+    global PROJETO_RAIZ
+    raiz = PROJETO_RAIZ
     if not os.path.isabs(caminho):
         caminho = os.path.join(raiz, caminho)
 
@@ -218,4 +225,10 @@ def ler_arquivo(caminho):
 
     return f"📄 Conteúdo de '{caminho}':\n```\n{conteudo}\n```"
 
-
+def escrever_arquivo(caminho: str, conteudo: str):
+    caminho_real = _sanitizar_caminho(caminho)
+    if FILE_WRITE:
+        with open(caminho_real, 'w', encoding="utf-8") as file:
+            file.write(conteudo)
+    else:
+        return f"O usuario ativou a trava de segurança FILE_WRITE que não permite a modificação de arquivos."

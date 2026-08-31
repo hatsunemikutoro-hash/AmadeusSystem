@@ -1,4 +1,11 @@
 import sys
+import subprocess
+
+# Forçar UTF-8 no CMD
+if sys.platform == "win32":
+    subprocess.run("chcp 65001", shell=True, capture_output=True)
+    sys.stdout.reconfigure(encoding='utf-8')
+
 import time
 import asyncio
 import pyperclip
@@ -20,6 +27,7 @@ from kurisu.gui.banners import KURISU_BANNER, SKULD_BANNER, VALKYRIE_BANNER
 from kurisu.gui.gui_helpers import get_prefix
 from kurisu.gui.gui_variables import *
 from kurisu.brain_func.core import falar, memory
+import kurisu.brain_func.core as core
 from kurisu.memory.memory_manager import wipe, mudar_persona
 import kurisu.utils as utils
 
@@ -30,7 +38,6 @@ STREAM_FLUSH_INTERVAL = 0.05  # segundos entre atualizações de tela durante o 
 SCROLL_TOLERANCE = 3  # linhas de folga para considerar "no final" do scroll
 
 
-
 # =========================
 # APP
 # =========================
@@ -39,6 +46,8 @@ class AmadeusKurisu(App):
     BINDINGS = [
         ("ctrl+y", "copy_last", "Copiar Última Resposta"),
         ("ctrl+v", "paste_last", "Colar da área de transferência"),
+        ("ctrl+b", "lock_search", "Travar Pesquisa"),
+        ("ctrl+n", "write_file", "Travar Write File"),
     ]
 
     CSS = """
@@ -109,11 +118,11 @@ class AmadeusKurisu(App):
         self.ultima_resposta_amadeus = ""
         self.current_persona = "kurisu"
         self._processing = False
-        # TODO make a write tool
-        # TODO make a change model command like that /model (model)
+
         self.commands_map = {
             "/wipe": self.wipe_command,
-            "/local": self.choose_pasta
+            "/local": self.choose_pasta,
+            "/model": self.change_model
         }
     # UI SETUP
 
@@ -203,8 +212,23 @@ class AmadeusKurisu(App):
 
         except Exception as e:
             self.notify(str(e), severity="error")
+    async def action_lock_search(self):
+        container = self.query_one("#chat_container", VerticalScroll)
+        utils.LOCK_SEARCH = not utils.LOCK_SEARCH
+        await self._mount_message(
+            Static(f"[dim]--- Now lock_search are {utils.LOCK_SEARCH} ---[/dim]", classes="msg_info"),
+            container,
+        )
 
-    async def choose_pasta(self, container):
+    async def action_write_file(self):
+        container = self.query_one("#chat_container", VerticalScroll)
+        utils.FILE_WRITE = not utils.FILE_WRITE
+        await self._mount_message(
+            Static(f"[dim]--- Now write_file are {utils.FILE_WRITE} ---[/dim]", classes="msg_info"),
+            container,
+        )
+
+    async def choose_pasta(self, container, arg):
         file = pd.askdirectory(title="selecione a pasta do seu projeto")
 
         utils.PROJETO_RAIZ =  file
@@ -213,7 +237,7 @@ class AmadeusKurisu(App):
             container,
         )
 
-    async def wipe_command(self, container):
+    async def wipe_command(self, container, arg):
         wipe()
         memory.clear()
         await self._mount_message(
@@ -221,14 +245,35 @@ class AmadeusKurisu(App):
             container,
         )
 
+    async def change_model(self, container, model):
+            try:
+                core.model = model
+                await self._mount_message(
+                    Static(f"[dim]--- Changed actual model to {model} ---[/dim]", classes="msg_info"),
+                    container,
+                )
+            except Exception as e:
+                await self._mount_message(
+                    Static(f"[#ff0000]--- ERROR: {e} ---[/#ff0000]", classes="msg_info"),
+                    container,
+                )
+
     async def processar_comando(self, comando: str):
+        global arg
         container = self.query_one("#chat_container", VerticalScroll)
         input_box = self.query_one("#terminal_input", Input)
 
         cmd = comando.split()[0].lower()
 
+        # optional, i think the best solution will be actually put that shit in every function
+        # i hope i find a better solution than this lol
+        if len(comando.split()) > 1:
+            arg = comando.split()[1].lower()
+        else:
+            arg = ""
+
         if cmd in self.commands_map:
-            await self.commands_map[cmd](container)
+            await self.commands_map[cmd](container, arg)
             return
 
         if cmd not in mapa:
@@ -274,7 +319,7 @@ class AmadeusKurisu(App):
 
         prefix = get_prefix(self.current_persona)
 
-        amadeus_msg = Static(prefix, classes="msg_amadeus")
+        amadeus_msg = Static(prefix, classes="msg_amadeus", markup=True)
         await self._mount_message(amadeus_msg, container)
 
         self._processing = True
